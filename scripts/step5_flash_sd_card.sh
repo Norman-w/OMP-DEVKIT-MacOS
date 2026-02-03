@@ -58,8 +58,8 @@ BOOT_SOURCE="${SD_CARD_DIR}/BOOT_partition"
 ROOTFS_IMG="${SD_CARD_DIR}/rootfs.ext4"
 cd "$ORIGINAL_PWD" 2>/dev/null || true
 
-# Root 分区在 SD 卡上的起始扇区（与文档中 diskutil 分区后的布局一致）
-ROOT_SEEK_SECTORS=1050624
+# Root 分区在 SD 卡上的起始扇区（两分区时 diskutil 第二分区从 1048576 开始）
+ROOT_SEEK_SECTORS=1048576
 
 echo ""
 echo -e "${GREEN}========================================${NC}"

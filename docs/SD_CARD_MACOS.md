@@ -62,10 +62,10 @@ sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M free none R
 
 ## 4. 使用 dd 将 rootfs.ext4 写入 root 区域
 
-root 区域从 **第 1050624 个扇区**开始（即 512MB 之后），与上一步 512MB BOOT 分区对齐。使用 **字符设备** `rdisk` 比 `disk` 更快。
+两分区时（BOOT 512M + ROOT R），第二分区从 **第 1048576 个扇区**开始（512MB = 1048576×512）。使用 **字符设备** `rdisk` 比 `disk` 更快。
 
 ```bash
-sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1050624 conv=sync status=progress
+sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1048576 conv=sync status=progress
 ```
 
 **参数说明：**
@@ -75,7 +75,7 @@ sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=
 | `if=...` | **输入文件**：本仓库中的 `rootfs.ext4` 镜像路径，按你的实际路径修改。 |
 | `of=/dev/rdisk5` | **输出设备**：SD 卡对应的**原始（raw）设备**。`rdisk5` 对应 `disk5`，写入时不经系统缓存，速度更快。 |
 | `bs=512` | **块大小**：每次读写 512 字节（一个扇区），与分区/扇区对齐一致。 |
-| `seek=1050624` | **跳过前 1050624 个扇区**再开始写。1050624 × 512 ≈ 512MB，即从 BOOT 分区之后开始写，不会覆盖 BOOT。 |
+| `seek=1048576` | **跳过前 1048576 个扇区**再开始写。1048576 × 512 = 512MB，即从第二分区（ROOT）起始开始写，不会覆盖 BOOT。 |
 | `conv=sync` | 保证数据完整同步到设备；若输入不足一个块，用零填充到 `bs` 大小。 |
 | `status=progress` | 在写入过程中打印进度。 |
 
@@ -113,8 +113,8 @@ sudo diskutil unmountDisk /dev/disk5
 1. `diskutil list` → 确认 SD 卡设备（如 `/dev/disk5`）。
 2. **再次确认设备名、容量、型号，避免误操作系统盘或其它盘。**
 3. `sudo diskutil unmountDisk /dev/disk5`
-4. `sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M free none R`
-5. `sudo dd if=.../sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1050624 conv=sync status=progress`
+4. `sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M fat32 ROOT R`（两分区：BOOT + ROOT）
+5. `sudo dd if=.../sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1048576 conv=sync status=progress`
 6. `sudo diskutil unmountDisk /dev/disk5`
 7. 重新插拔，确认 BOOT 分区可识别即表示制作完成。
 
