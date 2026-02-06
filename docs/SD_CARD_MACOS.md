@@ -56,7 +56,44 @@ sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M free none R
 - `FAT32 BOOT 512M`：第一个分区为 FAT32，卷名 BOOT，大小 512MB。
 - `free none R`：剩余空间不创建新分区（`free`），名称 `none`，类型 `R` 表示“剩余空间”。
 
-完成后，整盘布局为：**前 512MB 为 BOOT（FAT32）**，**后面是未分区的空闲区域**，用于从固定扇区起 dd 写入 rootfs.ext4。
+完成后，整盘布局为：**前 512MB 为 BOOT（FAT32）**，**后面是剩余空间**。接下来需用 **fdisk** 将剩余空间做成第二分区并设为 Linux 类型（83），才能从固定扇区起正确 dd 写入 rootfs.ext4。
+
+---
+
+### 3.1 彻底卸载磁盘（关键）
+
+在进入 fdisk 前，必须先**彻底卸载整张磁盘**，否则 fdisk 可能无法正确写入分区表。
+
+```bash
+sudo diskutil unmountDisk /dev/disk5
+```
+
+**注意：** 必须是 **`unmountDisk`**（卸载整盘），而不是 `unmount`（仅卸载单个分区）。
+
+---
+
+### 3.2 使用 fdisk 将剩余空间设为 Linux 分区 (83)
+
+进入 fdisk 交互，编辑第二分区：类型改为 **83 (Linux)**，起始扇区 **1048576**（即 512MB 处），大小保持默认（占满剩余空间）。
+
+```bash
+sudo fdisk -e /dev/disk5
+```
+
+在 `fdisk>` 提示下依次输入：
+
+| 输入 | 含义 |
+|------|------|
+| `edit 2` | 编辑第 2 个分区表项 |
+| `83` | Partition ID：Linux (83) |
+| `n` | 使用 CHS 模式（按提示选 n） |
+| `1048576` | Offset（起始扇区，512MB = 1048576 扇区） |
+| 回车 | Size：直接回车表示用默认最大（占满剩余空间） |
+| `write` | 写入分区表 |
+| `y` | 确认写入 |
+| `quit` | 退出 fdisk |
+
+完成后，第二分区从扇区 1048576 开始，类型为 Linux (83)，即可在步骤 4 中用 dd 写入 rootfs.ext4。
 
 ---
 
@@ -65,7 +102,7 @@ sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M free none R
 两分区时（BOOT 512M + ROOT R），第二分区从 **第 1048576 个扇区**开始（512MB = 1048576×512）。使用 **字符设备** `rdisk` 比 `disk` 更快。
 
 ```bash
-sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1048576 conv=sync status=progress
+sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=1m seek=512 conv=sync status=progress
 ```
 
 **参数说明：**
@@ -74,10 +111,12 @@ sudo dd if=/Users/norman/FPGAProjects/OMP/sd_card/rootfs.ext4 of=/dev/rdisk5 bs=
 |------|------|
 | `if=...` | **输入文件**：本仓库中的 `rootfs.ext4` 镜像路径，按你的实际路径修改。 |
 | `of=/dev/rdisk5` | **输出设备**：SD 卡对应的**原始（raw）设备**。`rdisk5` 对应 `disk5`，写入时不经系统缓存，速度更快。 |
-| `bs=512` | **块大小**：每次读写 512 字节（一个扇区），与分区/扇区对齐一致。 |
-| `seek=1048576` | **跳过前 1048576 个扇区**再开始写。1048576 × 512 = 512MB，即从第二分区（ROOT）起始开始写，不会覆盖 BOOT。 |
+| `bs=1m` | **块大小**：每次读写 1MB，比 `bs=512` 少很多 I/O 次数，写入更快。 |
+| `seek=512` | **跳过前 512 个 1MB 块**（即 512MB），从第二分区（ROOT）起始开始写，不会覆盖 BOOT。 |
 | `conv=sync` | 保证数据完整同步到设备；若输入不足一个块，用零填充到 `bs` 大小。 |
 | `status=progress` | 在写入过程中打印进度。 |
+
+**提速说明：** 使用 `bs=1m seek=512` 比 `bs=512 seek=1048576` 通常快数倍；若仍只有约 2MB/s，多为读卡器或 SD 卡本身限制（如 USB 2.0、Class 4 卡）。
 
 **注意：** `of=` 必须是 **你的 SD 卡** 的 `rdisk` 设备（如 `rdisk5`），切勿写错成系统盘或其它磁盘。
 
@@ -113,9 +152,11 @@ sudo diskutil unmountDisk /dev/disk5
 1. `diskutil list` → 确认 SD 卡设备（如 `/dev/disk5`）。
 2. **再次确认设备名、容量、型号，避免误操作系统盘或其它盘。**
 3. `sudo diskutil unmountDisk /dev/disk5`
-4. `sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M fat32 ROOT R`（两分区：BOOT + ROOT）
-5. `sudo dd if=.../sd_card/rootfs.ext4 of=/dev/rdisk5 bs=512 seek=1048576 conv=sync status=progress`
-6. `sudo diskutil unmountDisk /dev/disk5`
-7. 重新插拔，确认 BOOT 分区可识别即表示制作完成。
+4. `sudo diskutil partitionDisk /dev/disk5 MBR FAT32 BOOT 512M free none R`（BOOT 512MB + 剩余空间）
+5. **再次** `sudo diskutil unmountDisk /dev/disk5`（关键：必须 unmountDisk 整盘）
+6. `sudo fdisk -e /dev/disk5` → `edit 2` → `83` → `n` → `1048576` → 回车 → `write` → `y` → `quit`（将剩余空间设为 Linux 分区）
+7. `sudo dd if=.../sd_card/rootfs.ext4 of=/dev/rdisk5 bs=1m seek=512 conv=sync status=progress`
+8. `sudo diskutil unmountDisk /dev/disk5`
+9. 重新插拔，确认 BOOT 分区可识别即表示制作完成。
 
 脚本自动化：可使用仓库中的 `scripts/step5_flash_sd_card.sh`（在 macOS 上执行），在已按上述步骤做好分区的前提下，自动拷贝 BOOT 文件并 dd 写入 rootfs.ext4。
