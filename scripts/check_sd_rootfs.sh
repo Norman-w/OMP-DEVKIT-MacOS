@@ -75,5 +75,5 @@ echo "  seek=1048576: ${B_B:-空}"
 echo "$B_B" | grep -qE '53ef|ef53' && { echo ""; echo "结果: rootfs.ext4 已正确写入（seek=1048576）。"; exit 0; }
 echo ""
 echo "结果: 两处均无 ext4 魔数，需执行 dd。"
-echo "  sudo dd if=\$REPO/sd_card/rootfs.ext4 of=$RDEV bs=512 seek=1048576 conv=sync status=progress"
+echo "  sudo dd if=\$REPO/sd_card/rootfs.ext4 of=$RDEV bs=1m seek=512 conv=sync status=progress"
 exit 1

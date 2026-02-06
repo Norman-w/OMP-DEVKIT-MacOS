@@ -60,6 +60,8 @@ cd "$ORIGINAL_PWD" 2>/dev/null || true
 
 # Root 分区在 SD 卡上的起始扇区（两分区时 diskutil 第二分区从 1048576 开始）
 ROOT_SEEK_SECTORS=1048576
+# 用 1MB 块写入可显著提速（seek 单位也为 1MB：512MB = 512）
+ROOT_SEEK_MB=512
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -244,9 +246,9 @@ diskutil unmount "$BOOT_PART" || true
 echo -e "${GREEN}BOOT 分区文件拷贝完成${NC}"
 echo ""
 
-# 使用 dd 写入 rootfs.ext4 到 root 区域
-echo -e "${YELLOW}[macOS] 使用 dd 写入 rootfs.ext4 到 root 区域（seek=$ROOT_SEEK_SECTORS 扇区）...${NC}"
-sudo dd if="$ROOTFS_IMG" of="$RDEVICE" bs=512 seek="$ROOT_SEEK_SECTORS" conv=sync status=progress || {
+# 使用 dd 写入 rootfs.ext4 到 root 区域（bs=1m 比 bs=512 快很多）
+echo -e "${YELLOW}[macOS] 使用 dd 写入 rootfs.ext4 到 root 区域（seek=${ROOT_SEEK_MB}MB）...${NC}"
+sudo dd if="$ROOTFS_IMG" of="$RDEVICE" bs=1m seek="$ROOT_SEEK_MB" conv=sync status=progress || {
     echo -e "${RED}错误: dd 写入失败${NC}"
     exit 1
 }
