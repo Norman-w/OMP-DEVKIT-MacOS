@@ -6,7 +6,7 @@
 # 运行环境: macOS
 #
 # 功能:
-#   1. 从 VM 拉取 PetaLinux sd_card 到本仓库（带进度）
+#   1. 从 VM 拉取 PetaLinux sd_card 到本仓库
 #   2. 检测 SD 卡并烧录（BOOT + rootfs.ext4）
 #
 # 用法:

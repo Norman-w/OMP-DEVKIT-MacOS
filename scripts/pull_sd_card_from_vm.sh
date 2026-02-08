@@ -1,13 +1,12 @@
 #!/bin/bash
 # ============================================================================
-# [macOS] 从远程 VM 拉取 PetaLinux sd_card 到本仓库 sd_card（带进度）
+# [macOS] 从远程 VM 拉取 PetaLinux sd_card 到本仓库 sd_card
 # ============================================================================
 #
 # 运行环境: macOS
 #
 # 功能:
-#   从 VM 上的 /home/norman/petalinux-projects/OMP/sd_card 同步到本仓库 sd_card 目录，
-#   使用 rsync 显示进度，便于后续烧录。
+#   先清空本仓库 sd_card 目录，再从 VM 全量拉取，保证与 VM 一致；便于后续烧录。
 #
 # 用法:
 #   ./scripts/pull_sd_card_from_vm.sh
@@ -54,7 +53,7 @@ fi
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  从 VM 拉取 sd_card（带进度）${NC}"
+echo -e "${GREEN}  从 VM 拉取 sd_card${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "${BLUE}远程: ${REMOTE_SRC}${NC}"
@@ -69,10 +68,12 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE" "exit" 2>/dev/null; then
     echo ""
 fi
 
+# 清空本地 sd_card 后全量同步，避免漏同步；-P 输出进度
+echo -e "${YELLOW}清空本地 sd_card...${NC}"
+rm -rf "${SD_CARD_DIR}"
 mkdir -p "$SD_CARD_DIR"
 
-# rsync: -a 归档, -v 详细, -z 压缩, -P 进度与断点续传（macOS 自带 rsync 2.6.x 不支持 --info=progress2）
-echo -e "${YELLOW}正在同步（带进度）...${NC}"
+echo -e "${YELLOW}正在从 VM 拉取...${NC}"
 if rsync -avz -P -e ssh "${REMOTE_SRC}" "${SD_CARD_DIR}/"; then
     echo ""
     echo -e "${GREEN}拉取完成。${NC}"
