@@ -63,5 +63,20 @@ echo -e "${YELLOW}[2/3] 从 VM 拉取 sd_card 到本机...${NC}"
 "${SCRIPT_DIR}/pull_sd_card_from_vm.sh"
 echo ""
 
+# 首屏 splash：VM 上构建时没有 splash.rgb565，拉取后在 Mac 上注入（与本仓库或 OMP-AC820-PetaLinux 仓库根目录一致）
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SD_BOOT="${REPO_ROOT}/sd_card/BOOT_partition"
+OMP_AC820="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)/OMP-AC820-PetaLinux"
+if [ -f "${REPO_ROOT}/splash.rgb565" ]; then
+    cp "${REPO_ROOT}/splash.rgb565" "${SD_BOOT}/splash.rgb565"
+    echo -e "${GREEN}  ✓ 已注入 splash.rgb565（来自本仓库根）${NC}"
+elif [ -f "${OMP_AC820}/splash.rgb565" ]; then
+    cp "${OMP_AC820}/splash.rgb565" "${SD_BOOT}/splash.rgb565"
+    echo -e "${GREEN}  ✓ 已注入 splash.rgb565（来自 OMP-AC820-PetaLinux 仓库根）${NC}"
+else
+    echo -e "${YELLOW}  ⚠ 未找到 splash.rgb565，BOOT 分区无首屏图。可在 OMP-AC820-PetaLinux 根目录运行 ./scripts/make_splash.sh 生成后重新执行本一键脚本。${NC}"
+fi
+echo ""
+
 echo -e "${YELLOW}[3/3] 烧录 SD 卡...${NC}"
 "${SCRIPT_DIR}/step5_flash_sd_card.sh"
