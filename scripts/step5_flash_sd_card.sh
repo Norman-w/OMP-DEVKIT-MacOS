@@ -180,20 +180,28 @@ if [ ${#DEVICE_ARRAY[@]} -eq 0 ]; then
     exit 1
 fi
 
-echo ""
-echo -e "${YELLOW}请选择要使用的 SD 卡（输入编号或设备名，如 1 或 disk2）:${NC}"
-read -r USER_INPUT
 
-if [[ "$USER_INPUT" =~ ^[0-9]+$ ]]; then
-    if [ "$USER_INPUT" -ge 1 ] && [ "$USER_INPUT" -le ${#DEVICE_ARRAY[@]} ]; then
-        SD_DEVICE="${DEVICE_ARRAY[$((USER_INPUT-1))]}"
-    else
-        echo -e "${RED}错误: 无效的编号${NC}"
-        exit 1
-    fi
+# 自动选择SD卡并自动确认
+if [ ${#DEVICE_ARRAY[@]} -eq 1 ]; then
+    SD_DEVICE="${DEVICE_ARRAY[0]}"
+    echo -e "${GREEN}自动检测到唯一SD卡: $SD_DEVICE，自动烧录...${NC}"
+    AUTO_CONFIRM=1
 else
-    SD_DEVICE="${USER_INPUT}"
-    [[ ! "$SD_DEVICE" =~ ^/dev/disk ]] && SD_DEVICE="/dev/disk${SD_DEVICE#disk}"
+    echo ""
+    echo -e "${YELLOW}请选择要使用的 SD 卡（输入编号或设备名，如 1 或 disk2）:${NC}"
+    read -r USER_INPUT
+    if [[ "$USER_INPUT" =~ ^[0-9]+$ ]]; then
+        if [ "$USER_INPUT" -ge 1 ] && [ "$USER_INPUT" -le ${#DEVICE_ARRAY[@]} ]; then
+            SD_DEVICE="${DEVICE_ARRAY[$((USER_INPUT-1))]}"
+        else
+            echo -e "${RED}错误: 无效的编号${NC}"
+            exit 1
+        fi
+    else
+        SD_DEVICE="${USER_INPUT}"
+        [[ ! "$SD_DEVICE" =~ ^/dev/disk ]] && SD_DEVICE="/dev/disk${SD_DEVICE#disk}"
+    fi
+    AUTO_CONFIRM=0
 fi
 
 if ! diskutil info "$SD_DEVICE" &>/dev/null; then
@@ -212,13 +220,17 @@ echo ""
 echo -e "${YELLOW}设备信息:${NC}"
 diskutil list "$SD_DEVICE"
 echo ""
-echo -e "${RED}警告: 将向 $SD_DEVICE 写入 BOOT 分区文件并 dd 写入 rootfs.ext4，请确认设备、容量、名称确认为 SD 卡，避免误操作其他磁盘。${NC}"
-echo -e "${YELLOW}确认使用 $SD_DEVICE 继续？(yes/y/no):${NC}"
-read -r CONFIRM
-CONFIRM=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
-if [ "$CONFIRM" != "yes" ] && [ "$CONFIRM" != "y" ]; then
-    echo "操作已取消"
-    exit 0
+if [ "$AUTO_CONFIRM" = "1" ]; then
+    echo -e "${GREEN}唯一SD卡且结构符合，自动确认，开始烧录...${NC}"
+else
+    echo -e "${RED}警告: 将向 $SD_DEVICE 写入 BOOT 分区文件并 dd 写入 rootfs.ext4，请确认设备、容量、名称确认为 SD 卡，避免误操作其他磁盘。${NC}"
+    echo -e "${YELLOW}确认使用 $SD_DEVICE 继续？(yes/y/no):${NC}"
+    read -r CONFIRM
+    CONFIRM=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
+    if [ "$CONFIRM" != "yes" ] && [ "$CONFIRM" != "y" ]; then
+        echo "操作已取消"
+        exit 0
+    fi
 fi
 
 # 卸载整盘

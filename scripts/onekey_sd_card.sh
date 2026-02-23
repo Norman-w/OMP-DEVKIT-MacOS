@@ -29,10 +29,20 @@ if [ -L "$SCRIPT_SOURCE" ]; then
 fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 
+
+# 自动加载env文件（如dev.env）
+ENV_FILE="${SCRIPT_DIR}/../dev.env"
+if [ -f "$ENV_FILE" ]; then
+    set -a
+    . "$ENV_FILE"
+    set +a
+fi
+
 # 与子脚本一致的默认值，便于单独跑一键时生效
-export VM_IP="${VM_IP:-10.10.10.1}"
+export VM_IP="${VM_IP:-192.168.7.234}"
 export VM_USER="${VM_USER:-norman}"
 export VM_SD_PATH="${VM_SD_PATH:-/home/norman/petalinux-projects/OMP/sd_card}"
+export VM_PASSWORD="${VM_PASSWORD:-}" # 密码可选
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'

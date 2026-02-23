@@ -42,4 +42,4 @@ sudo dd if=rootfs.ext4 of=/dev/diskXs2 bs=1M status=progress
 
 ---
 
-**生成时间**: 2026-02-13 11:57:24
+**生成时间**: 2026-02-23 11:43:58

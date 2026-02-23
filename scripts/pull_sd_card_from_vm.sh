@@ -17,6 +17,7 @@
 #   VM_SD_PATH  VM 上 sd_card 路径，默认 /home/norman/petalinux-projects/OMP/sd_card
 #
 # 前置: 需已配置好到 VM 的免密登录（见 setup_ssh_key_to_vm.sh）
+# 环境变量: VM_PASSWORD  VM 的密码（可选）
 # ============================================================================
 
 set -e
@@ -60,8 +61,19 @@ echo -e "${BLUE}远程: ${REMOTE_SRC}${NC}"
 echo -e "${BLUE}本地: ${SD_CARD_DIR}/${NC}"
 echo ""
 
+
 # 可选：先测试 SSH 免密是否可用
-if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE" "exit" 2>/dev/null; then
+SSH_CMD="ssh"
+RSYNC_CMD="rsync -avz -P -e ssh"
+if [ -n "$VM_PASSWORD" ]; then
+    if ! sshpass -V >/dev/null 2>&1; then
+        echo -e "${YELLOW}sshpass 未安装，自动输入密码功能不可用。请安装 sshpass 或手动输入密码。${NC}"
+    else
+        SSH_CMD="sshpass -p $VM_PASSWORD ssh"
+        RSYNC_CMD="sshpass -p $VM_PASSWORD rsync -avz -P -e ssh"
+    fi
+fi
+if ! $SSH_CMD -o BatchMode=yes -o ConnectTimeout=5 "$REMOTE" "exit" 2>/dev/null; then
     echo -e "${YELLOW}提示: 无法免密连接 $REMOTE。请先运行:${NC}"
     echo -e "  ${BLUE}./scripts/setup_ssh_key_to_vm.sh${NC}"
     echo -e "${YELLOW}继续将尝试拉取（可能会提示输入密码）...${NC}"
@@ -74,7 +86,7 @@ rm -rf "${SD_CARD_DIR}"
 mkdir -p "$SD_CARD_DIR"
 
 echo -e "${YELLOW}正在从 VM 拉取...${NC}"
-if rsync -avz -P -e ssh "${REMOTE_SRC}" "${SD_CARD_DIR}/"; then
+if $RSYNC_CMD "${REMOTE_SRC}" "${SD_CARD_DIR}/"; then
     echo ""
     echo -e "${GREEN}拉取完成。${NC}"
     echo -e "${BLUE}可执行烧录: ./scripts/step5_flash_sd_card.sh${NC}"
