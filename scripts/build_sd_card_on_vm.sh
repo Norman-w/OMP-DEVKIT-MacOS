@@ -103,13 +103,15 @@ run_pull_and_build 2>&1 | tee /tmp/vm_pull_output.$$
 pull_exit=${PIPESTATUS[0]}
 set -e
 if [ "$pull_exit" -ne 0 ]; then
-    # 检查是否因「本地修改将被合并覆盖」而失败
+    # 检查是否因「本地修改将被覆盖」（merge 或 checkout）而失败
     if grep -q "您对下列文件的本地修改将被合并操作覆盖" /tmp/vm_pull_output.$$ 2>/dev/null || \
-       grep -q "Your local changes to the following files would be overwritten by merge" /tmp/vm_pull_output.$$ 2>/dev/null; then
+       grep -q "Your local changes to the following files would be overwritten by merge" /tmp/vm_pull_output.$$ 2>/dev/null || \
+       grep -q "您对下列文件的本地修改将被检出操作覆盖" /tmp/vm_pull_output.$$ 2>/dev/null || \
+       grep -q "Your local changes to the following files would be overwritten by checkout" /tmp/vm_pull_output.$$ 2>/dev/null; then
         echo ""
         echo -e "${YELLOW}---------- VM 上以下文件有本地修改，会被 pull 覆盖 ----------${NC}"
         # 从错误信息中提取文件列表（下一行缩进空格开头的路径；兼容 macOS BSD sed/grep）
-        sed -E -n '/本地修改将被合并操作覆盖|would be overwritten by merge/,/请在合并前|Please commit or stash/p' /tmp/vm_pull_output.$$ | grep -E '^[[:space:]]+[a-zA-Z0-9_/].*' | sed 's/^[[:space:]]*//' | sort -u > /tmp/vm_conflict_files.$$
+        sed -E -n '/本地修改将被合并操作覆盖|本地修改将被检出操作覆盖|would be overwritten by merge|would be overwritten by checkout/,/请在合并前|请在切换分支前|Please commit or stash/p' /tmp/vm_pull_output.$$ | grep -E '^[[:space:]]+[a-zA-Z0-9_./-].*' | sed 's/^[[:space:]]*//' | sort -u > /tmp/vm_conflict_files.$$
         conflict_files="$(cat /tmp/vm_conflict_files.$$)"
         echo "$conflict_files"
         echo ""
