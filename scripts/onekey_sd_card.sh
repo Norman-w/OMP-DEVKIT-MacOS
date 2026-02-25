@@ -44,6 +44,8 @@ export VM_USER="${VM_USER:-norman}"
 export VM_SD_PATH="${VM_SD_PATH:-/home/norman/petalinux-projects/OMP/sd_card}"
 export VM_PASSWORD="${VM_PASSWORD:-}" # 密码可选
 export VM_TARGET_BRANCH="${VM_TARGET_BRANCH:-}"
+export VM_TARGET_MODE="${VM_TARGET_MODE:-branch}"
+export VM_TARGET_REF="${VM_TARGET_REF:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -57,7 +59,7 @@ echo -e "${GREEN}========================================${NC}"
 echo ""
 
 # 选择 VM 构建分支：若检测到最新提交不在 master，可交互选择 latest/master/自定义
-if [ -z "${VM_TARGET_BRANCH}" ]; then
+if [ -z "${VM_TARGET_BRANCH}" ] && [ -z "${VM_TARGET_REF}" ]; then
     OMP_AC820="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)/OMP-AC820-PetaLinux"
     if [ -d "${OMP_AC820}/.git" ]; then
         git -C "${OMP_AC820}" fetch origin --quiet || true
@@ -68,38 +70,84 @@ if [ -z "${VM_TARGET_BRANCH}" ]; then
         fi
 
         echo -e "${YELLOW}检测到 OMP-AC820-PetaLinux 最新远程分支: ${latest_branch}${NC}"
-        if [ "${latest_branch}" != "master" ]; then
-            echo "请选择 VM 上用于构建 sd_card 的分支:"
-            echo "  1) 最新分支 (${latest_branch})"
-            echo "  2) master"
-            echo "  3) 自定义分支"
-            read -r -p "输入选项 [1/2/3, 默认1]: " branch_pick
-            case "${branch_pick}" in
-                2)
-                    VM_TARGET_BRANCH="master"
-                    ;;
-                3)
-                    read -r -p "请输入分支名: " custom_branch
-                    if [ -n "${custom_branch}" ]; then
-                        VM_TARGET_BRANCH="${custom_branch}"
-                    else
-                        VM_TARGET_BRANCH="${latest_branch}"
-                    fi
-                    ;;
-                *)
+        echo "请选择 VM 上用于构建 sd_card 的版本:"
+        echo "  1) 最新分支 (${latest_branch})"
+        echo "  2) master"
+        echo "  3) 自定义分支"
+        echo "  4) 回退到 👑 里程碑提交"
+        echo "  5) 回退到指定提交号"
+        read -r -p "输入选项 [1/2/3/4/5, 默认1]: " branch_pick
+        case "${branch_pick}" in
+            2)
+                VM_TARGET_MODE="branch"
+                VM_TARGET_BRANCH="master"
+                ;;
+            3)
+                read -r -p "请输入分支名: " custom_branch
+                VM_TARGET_MODE="branch"
+                if [ -n "${custom_branch}" ]; then
+                    VM_TARGET_BRANCH="${custom_branch}"
+                else
                     VM_TARGET_BRANCH="${latest_branch}"
-                    ;;
-            esac
-        else
-            VM_TARGET_BRANCH="master"
-        fi
+                fi
+                ;;
+            4)
+                VM_TARGET_MODE="commit"
+                milestone_lines=()
+                while IFS= read -r line; do
+                    milestone_lines+=("$line")
+                done < <(git -C "${OMP_AC820}" --no-pager log --oneline origin/master | grep "👑" | head -n 20)
+
+                if [ ${#milestone_lines[@]} -eq 0 ]; then
+                    echo -e "${YELLOW}⚠ 未找到 👑 里程碑提交，回退为 master。${NC}"
+                    VM_TARGET_MODE="branch"
+                    VM_TARGET_BRANCH="master"
+                else
+                    echo "可选里程碑："
+                    i=1
+                    for line in "${milestone_lines[@]}"; do
+                        echo "  ${i}) ${line}"
+                        i=$((i+1))
+                    done
+                    read -r -p "选择里程碑 [1-${#milestone_lines[@]}, 默认1]: " milestone_pick
+                    [ -z "${milestone_pick}" ] && milestone_pick=1
+                    if ! [[ "${milestone_pick}" =~ ^[0-9]+$ ]] || [ "${milestone_pick}" -lt 1 ] || [ "${milestone_pick}" -gt ${#milestone_lines[@]} ]; then
+                        milestone_pick=1
+                    fi
+                    selected_line="${milestone_lines[$((milestone_pick-1))]}"
+                    VM_TARGET_REF="$(echo "${selected_line}" | awk '{print $1}')"
+                fi
+                ;;
+            5)
+                VM_TARGET_MODE="commit"
+                read -r -p "请输入提交号（7~40位哈希）: " custom_ref
+                if echo "${custom_ref}" | grep -Eq '^[0-9a-fA-F]{7,40}$'; then
+                    VM_TARGET_REF="${custom_ref}"
+                else
+                    echo -e "${YELLOW}⚠ 提交号无效，回退为 master。${NC}"
+                    VM_TARGET_MODE="branch"
+                    VM_TARGET_BRANCH="master"
+                fi
+                ;;
+            *)
+                VM_TARGET_MODE="branch"
+                VM_TARGET_BRANCH="${latest_branch}"
+                ;;
+        esac
     else
         echo -e "${YELLOW}⚠ 未找到本地 OMP-AC820-PetaLinux 仓库，默认使用 master 构建。${NC}"
+        VM_TARGET_MODE="branch"
         VM_TARGET_BRANCH="master"
     fi
 fi
 export VM_TARGET_BRANCH
-echo -e "${GREEN}VM 构建分支: ${VM_TARGET_BRANCH}${NC}"
+export VM_TARGET_MODE
+export VM_TARGET_REF
+if [ "${VM_TARGET_MODE}" = "commit" ]; then
+    echo -e "${GREEN}VM 构建目标: commit ${VM_TARGET_REF}${NC}"
+else
+    echo -e "${GREEN}VM 构建分支: ${VM_TARGET_BRANCH}${NC}"
+fi
 echo ""
 
 echo -e "${YELLOW}[1/3] VM 上拉取代码并构建 sd_card...${NC}"
