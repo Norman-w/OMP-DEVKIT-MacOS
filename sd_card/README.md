@@ -5,11 +5,12 @@
 ```
 sd_card/
 ├── BOOT_partition/    # BOOT 分区文件（直接拷贝到 BOOT 分区）
-│   ├── BOOT.BIN       # 启动文件（必需）
+│   ├── BOOT.BIN       # 启动文件（必需，不含 PL bit）
 │   ├── image.ub       # Linux 镜像（必需）
-│   ├── boot.scr        # U-Boot 启动脚本（可选）
-│   ├── .env            # 启动环境变量（可选）
-│   └── .env.sample     # .env 模板（建议先复制再改）
+│   ├── boot.scr       # U-Boot 启动脚本（可选）
+│   ├── system.bin     # PL bitstream（bootgen 从 system.bit 转，供 fpga load + 首屏）
+│   ├── splash.rgb565  # 首屏 logo（可选，scripts/make_splash.sh 生成）
+│   └── .env.sample    # BOOT 启动变量样本（复制为 .env 可启用 splash）
 └── rootfs.ext4        # 根文件系统镜像（使用 dd 烧录到 rootfs 分区）
 ```
 
@@ -23,14 +24,20 @@ sd_card/
 - `BOOT.BIN` 文件名必须全大写（不是 `boot.bin`）
 - `image.ub` 文件名是小写（不是 `boot.ub`）
 
-### 可选：通过 `.env` 控制启动行为
+### 启用开机 splash（可选）
 
-将 `BOOT_partition/.env.sample` 复制为 `BOOT_partition/.env` 后可配置：
+1. 在 `BOOT_partition/` 中复制样本：`.env.sample` -> `.env`
+2. 编辑 `.env`，至少包含：
 
-- `PL_SPLASH_ENABLE` / `PL_COLORBAR_HOLD` / `PL_SPLASH_HOLD`（U-Boot 显示链路）
-- `WIFI_BOOT_FALLBACK_ENABLE`（Linux orchestrator 是否允许从 BOOT .env 注入 STA 配网）
+```bash
+PL_SPLASH_ENABLE=1
+PL_COLORBAR_HOLD=2
+PL_SPLASH_HOLD=1
+```
 
-建议默认：`PL_SPLASH_ENABLE=0`、`WIFI_BOOT_FALLBACK_ENABLE=0`，先做稳定性基线验证。
+3. 确保 BOOT 分区存在 `splash.rgb565`（否则仅显示色条）
+
+说明：若没有 `.env` 或 `PL_SPLASH_ENABLE` 不为 `1/yes/on`，U-Boot 会跳过 PL 首屏链路。
 
 ### rootfs 分区
 
@@ -53,4 +60,4 @@ sudo dd if=rootfs.ext4 of=/dev/diskXs2 bs=1M status=progress
 
 ---
 
-**生成时间**: 2026-02-25 20:30:36
+**生成时间**: 2026-02-25 21:17:44
