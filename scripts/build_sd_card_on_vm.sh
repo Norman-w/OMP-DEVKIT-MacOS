@@ -72,7 +72,7 @@ if [ "$VM_TARGET_MODE" = "commit" ]; then
             read -p "是否先 stash 本地修改再继续？(y/N): " answer
             answer_lower="$(echo "$answer" | tr '[:upper:]' '[:lower:]')"
             if [[ "$answer_lower" == "y" || "$answer_lower" == "yes" ]]; then
-                ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m "onekey_sd_card auto-stash(commit)" && git fetch origin --tags && git checkout ${VM_TARGET_REF} && ./do build card'" || {
+                ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m \"onekey_sd_card auto-stash-commit\" && git fetch origin --tags && git checkout ${VM_TARGET_REF} && ./do build card'" || {
                     echo -e "${RED}VM 上切换提交并构建失败${NC}"
                     rm -f /tmp/vm_pull_output.$$ /tmp/vm_conflict_files.$$ 2>/dev/null || true
                     exit 1
