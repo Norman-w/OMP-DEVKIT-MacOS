@@ -29,6 +29,13 @@ VM_TARGET_BRANCH="${VM_TARGET_BRANCH:-master}"
 VM_OMP_ROOT="$(dirname "$VM_SD_PATH")"
 REMOTE="${VM_USER}@${VM_IP}"
 
+# 兜底：避免把远程名 origin 当分支名；并兼容传入 origin/<branch>
+if [ "$VM_TARGET_BRANCH" = "origin" ]; then
+    VM_TARGET_BRANCH="master"
+elif [[ "$VM_TARGET_BRANCH" == origin/* ]]; then
+    VM_TARGET_BRANCH="${VM_TARGET_BRANCH#origin/}"
+fi
+
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'

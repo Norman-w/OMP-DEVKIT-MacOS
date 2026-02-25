@@ -61,9 +61,11 @@ if [ -z "${VM_TARGET_BRANCH}" ]; then
     OMP_AC820="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)/OMP-AC820-PetaLinux"
     if [ -d "${OMP_AC820}/.git" ]; then
         git -C "${OMP_AC820}" fetch origin --quiet || true
-        latest_remote_ref="$(git -C "${OMP_AC820}" for-each-ref --sort=-committerdate --format='%(refname:short)' refs/remotes/origin | grep -v '^origin/HEAD$' | head -n 1)"
+        latest_remote_ref="$(git -C "${OMP_AC820}" for-each-ref --sort=-committerdate --format='%(refname:short)' refs/remotes/origin/* | grep -E '^origin/' | grep -v '^origin/HEAD$' | head -n 1)"
         latest_branch="${latest_remote_ref#origin/}"
-        [ -z "${latest_branch}" ] && latest_branch="master"
+        if [ -z "${latest_branch}" ] || [ "${latest_branch}" = "origin" ]; then
+            latest_branch="master"
+        fi
 
         echo -e "${YELLOW}检测到 OMP-AC820-PetaLinux 最新远程分支: ${latest_branch}${NC}"
         if [ "${latest_branch}" != "master" ]; then
