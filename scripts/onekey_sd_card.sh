@@ -43,6 +43,7 @@ export VM_IP="${VM_IP:-192.168.7.234}"
 export VM_USER="${VM_USER:-norman}"
 export VM_SD_PATH="${VM_SD_PATH:-/home/norman/petalinux-projects/OMP/sd_card}"
 export VM_PASSWORD="${VM_PASSWORD:-}" # 密码可选
+export VM_TARGET_BRANCH="${VM_TARGET_BRANCH:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -53,6 +54,50 @@ echo ""
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  一键：VM 构建 + 拉取 + 烧录 SD 卡${NC}"
 echo -e "${GREEN}========================================${NC}"
+echo ""
+
+# 选择 VM 构建分支：若检测到最新提交不在 master，可交互选择 latest/master/自定义
+if [ -z "${VM_TARGET_BRANCH}" ]; then
+    OMP_AC820="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)/OMP-AC820-PetaLinux"
+    if [ -d "${OMP_AC820}/.git" ]; then
+        git -C "${OMP_AC820}" fetch origin --quiet || true
+        latest_remote_ref="$(git -C "${OMP_AC820}" for-each-ref --sort=-committerdate --format='%(refname:short)' refs/remotes/origin | grep -v '^origin/HEAD$' | head -n 1)"
+        latest_branch="${latest_remote_ref#origin/}"
+        [ -z "${latest_branch}" ] && latest_branch="master"
+
+        echo -e "${YELLOW}检测到 OMP-AC820-PetaLinux 最新远程分支: ${latest_branch}${NC}"
+        if [ "${latest_branch}" != "master" ]; then
+            echo "请选择 VM 上用于构建 sd_card 的分支:"
+            echo "  1) 最新分支 (${latest_branch})"
+            echo "  2) master"
+            echo "  3) 自定义分支"
+            read -r -p "输入选项 [1/2/3, 默认1]: " branch_pick
+            case "${branch_pick}" in
+                2)
+                    VM_TARGET_BRANCH="master"
+                    ;;
+                3)
+                    read -r -p "请输入分支名: " custom_branch
+                    if [ -n "${custom_branch}" ]; then
+                        VM_TARGET_BRANCH="${custom_branch}"
+                    else
+                        VM_TARGET_BRANCH="${latest_branch}"
+                    fi
+                    ;;
+                *)
+                    VM_TARGET_BRANCH="${latest_branch}"
+                    ;;
+            esac
+        else
+            VM_TARGET_BRANCH="master"
+        fi
+    else
+        echo -e "${YELLOW}⚠ 未找到本地 OMP-AC820-PetaLinux 仓库，默认使用 master 构建。${NC}"
+        VM_TARGET_BRANCH="master"
+    fi
+fi
+export VM_TARGET_BRANCH
+echo -e "${GREEN}VM 构建分支: ${VM_TARGET_BRANCH}${NC}"
 echo ""
 
 echo -e "${YELLOW}[1/3] VM 上拉取代码并构建 sd_card...${NC}"

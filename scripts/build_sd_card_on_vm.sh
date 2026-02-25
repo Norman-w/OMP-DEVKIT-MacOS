@@ -25,6 +25,7 @@ set -e
 VM_IP="${VM_IP:-10.10.10.1}"
 VM_USER="${VM_USER:-norman}"
 VM_SD_PATH="${VM_SD_PATH:-/home/norman/petalinux-projects/OMP/sd_card}"
+VM_TARGET_BRANCH="${VM_TARGET_BRANCH:-master}"
 VM_OMP_ROOT="$(dirname "$VM_SD_PATH")"
 REMOTE="${VM_USER}@${VM_IP}"
 
@@ -34,10 +35,11 @@ NC='\033[0m'
 
 # 使用 bash -lic 启动 login+交互 shell，避免 .bashrc 因非交互而提前 return 导致 PLNX_PATH 未加载
 echo -e "${YELLOW}在 VM ($REMOTE) OMP 工程目录执行 git pull 与 ./do build card...${NC}"
+echo -e "${YELLOW}目标分支: ${VM_TARGET_BRANCH}${NC}"
 
 # 先 fetch，再尝试 pull；若因本地修改被覆盖而失败，则展示改动并询问是否覆盖
 run_pull_and_build() {
-    ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git pull && ./do build card'"
+    ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git fetch origin && git checkout ${VM_TARGET_BRANCH} && git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'"
 }
 
 set +e
@@ -67,7 +69,7 @@ if [ "$pull_exit" -ne 0 ]; then
         answer_lower="$(echo "$answer" | tr '[:upper:]' '[:lower:]')"
         if [[ "$answer_lower" == "y" || "$answer_lower" == "yes" ]]; then
             echo -e "${YELLOW}正在 VM 上 stash 本地修改并重新 pull...${NC}"
-            ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m \"onekey_sd_card auto-stash\" && git pull && ./do build card'" || {
+			ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m \"onekey_sd_card auto-stash\" && git fetch origin && git checkout ${VM_TARGET_BRANCH} && git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'" || {
                 echo -e "${RED}VM 上 git stash/pull 或 ./do build card 失败${NC}"
                 rm -f /tmp/vm_pull_output.$$ /tmp/vm_conflict_files.$$
                 exit 1
