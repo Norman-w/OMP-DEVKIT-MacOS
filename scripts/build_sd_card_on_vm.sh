@@ -12,10 +12,12 @@
 #   ./scripts/build_sd_card_on_vm.sh
 #
 # 环境变量（可选）:
-#   VM_IP       VM 的 IP，默认 10.10.10.1
-#   VM_USER     VM 上的用户名，默认 norman
-#   VM_SD_PATH  VM 上 sd_card 路径，默认 /home/norman/petalinux-projects/OMP/sd_card
-#               OMP 工程根目录取其上级目录。
+#   VM_IP         VM 的 IP，默认 10.10.10.1
+#   VM_USER       VM 上的用户名，默认 norman
+#   VM_SD_PATH    VM 上 sd_card 路径，默认 /home/norman/petalinux-projects/OMP/sd_card
+#                 OMP 工程根目录取其上级目录。
+#   VM_GIT_PREFIX VM 上执行 git 时的前缀；若 VM 需经代理访问 GitHub（如 proxychains），
+#                 在 macOS 执行 onekey 前设置，例如: export VM_GIT_PREFIX="proxychains4 -q "
 #
 # 前置: 已配置 VM 免密登录（见 setup_ssh_key_to_vm.sh）
 # ============================================================================
@@ -30,6 +32,8 @@ VM_TARGET_MODE="${VM_TARGET_MODE:-branch}"
 VM_TARGET_REF="${VM_TARGET_REF:-}"
 VM_OMP_ROOT="$(dirname "$VM_SD_PATH")"
 REMOTE="${VM_USER}@${VM_IP}"
+# VM 上 git 命令前缀：从 macOS 触发时 VM 直连 GitHub 常超时，可用 proxychains4 走 Windows 代理
+VM_GIT_PREFIX="${VM_GIT_PREFIX:-}"
 
 # 兜底：避免把远程名 origin 当分支名；并兼容传入 origin/<branch>
 if [ "$VM_TARGET_BRANCH" = "origin" ]; then
@@ -56,7 +60,7 @@ fi
 
 if [ "$VM_TARGET_MODE" = "commit" ]; then
     run_checkout_commit_and_build() {
-        ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git fetch origin --tags && git checkout ${VM_TARGET_REF} && ./do build card'"
+        ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic '${VM_GIT_PREFIX} git fetch origin --tags && ${VM_GIT_PREFIX} git checkout ${VM_TARGET_REF} && ./do build card'"
     }
 
     set +e
@@ -72,7 +76,7 @@ if [ "$VM_TARGET_MODE" = "commit" ]; then
             read -p "是否先 stash 本地修改再继续？(y/N): " answer
             answer_lower="$(echo "$answer" | tr '[:upper:]' '[:lower:]')"
             if [[ "$answer_lower" == "y" || "$answer_lower" == "yes" ]]; then
-                ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m \"onekey_sd_card auto-stash-commit\" && git fetch origin --tags && git checkout ${VM_TARGET_REF} && ./do build card'" || {
+                ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic '${VM_GIT_PREFIX} git stash push -u -m \"onekey_sd_card auto-stash-commit\" && ${VM_GIT_PREFIX} git fetch origin --tags && ${VM_GIT_PREFIX} git checkout ${VM_TARGET_REF} && ./do build card'" || {
                     echo -e "${RED}VM 上切换提交并构建失败${NC}"
                     rm -f /tmp/vm_pull_output.$$ /tmp/vm_conflict_files.$$ 2>/dev/null || true
                     exit 1
@@ -95,7 +99,7 @@ fi
 
 # 先 fetch，再尝试 pull；若因本地修改被覆盖而失败，则展示改动并询问是否覆盖
 run_pull_and_build() {
-    ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git fetch origin && git checkout ${VM_TARGET_BRANCH} && git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'"
+    ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic '${VM_GIT_PREFIX} git fetch origin && ${VM_GIT_PREFIX} git checkout ${VM_TARGET_BRANCH} && ${VM_GIT_PREFIX} git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'"
 }
 
 set +e
@@ -127,7 +131,7 @@ if [ "$pull_exit" -ne 0 ]; then
         answer_lower="$(echo "$answer" | tr '[:upper:]' '[:lower:]')"
         if [[ "$answer_lower" == "y" || "$answer_lower" == "yes" ]]; then
             echo -e "${YELLOW}正在 VM 上 stash 本地修改并重新 pull...${NC}"
-			ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic 'git stash push -u -m \"onekey_sd_card auto-stash\" && git fetch origin && git checkout ${VM_TARGET_BRANCH} && git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'" || {
+			ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic '${VM_GIT_PREFIX} git stash push -u -m \"onekey_sd_card auto-stash\" && ${VM_GIT_PREFIX} git fetch origin && ${VM_GIT_PREFIX} git checkout ${VM_TARGET_BRANCH} && ${VM_GIT_PREFIX} git pull --ff-only origin ${VM_TARGET_BRANCH} && ./do build card'" || {
                 echo -e "${RED}VM 上 git stash/pull 或 ./do build card 失败${NC}"
                 rm -f /tmp/vm_pull_output.$$ /tmp/vm_conflict_files.$$
                 exit 1
@@ -152,10 +156,10 @@ if [ "$pull_exit" -ne 0 ]; then
                 backup_branch="backup/onekey-before-reset-$(date +%Y%m%d-%H%M%S)"
                 echo -e "${YELLOW}正在 VM 上创建备份分支并强制对齐...${NC}"
                 ssh -t "$REMOTE" "cd ${VM_OMP_ROOT} && bash -lic '\
-                    git fetch origin && \
-                    git checkout ${VM_TARGET_BRANCH} && \
-                    git branch ${backup_branch} && \
-                    git reset --hard origin/${VM_TARGET_BRANCH} && \
+                    ${VM_GIT_PREFIX} git fetch origin && \
+                    ${VM_GIT_PREFIX} git checkout ${VM_TARGET_BRANCH} && \
+                    ${VM_GIT_PREFIX} git branch ${backup_branch} && \
+                    ${VM_GIT_PREFIX} git reset --hard origin/${VM_TARGET_BRANCH} && \
                     ./do build card'" || {
                     echo -e "${RED}VM 上 reset/build 失败${NC}"
                     rm -f /tmp/vm_pull_output.$$ /tmp/vm_conflict_files.$$
