@@ -9,8 +9,7 @@ sd_card/
 │   ├── image.ub       # Linux 镜像（必需）
 │   ├── boot.scr       # U-Boot 启动脚本（可选）
 │   ├── system.bin     # PL bitstream（bootgen 从 system.bit 转，供 fpga load + 首屏）
-│   ├── splash.rgb565  # 首屏 logo（可选，scripts/make_splash.sh 生成）
-│   └── .env.sample    # BOOT 启动变量样本（复制为 .env 可启用 splash）
+│   └── splash.rgb565  # 首屏 logo（可选，scripts/make_splash.sh 生成）
 └── rootfs.ext4        # 根文件系统镜像（使用 dd 烧录到 rootfs 分区）
 ```
 
@@ -23,21 +22,6 @@ sd_card/
 **重要提示**：
 - `BOOT.BIN` 文件名必须全大写（不是 `boot.bin`）
 - `image.ub` 文件名是小写（不是 `boot.ub`）
-
-### 启用开机 splash（可选）
-
-1. 在 `BOOT_partition/` 中复制样本：`.env.sample` -> `.env`
-2. 编辑 `.env`，至少包含：
-
-```bash
-PL_SPLASH_ENABLE=1
-PL_COLORBAR_HOLD=2
-PL_SPLASH_HOLD=1
-```
-
-3. 确保 BOOT 分区存在 `splash.rgb565`（否则仅显示色条）
-
-说明：若没有 `.env` 或 `PL_SPLASH_ENABLE` 不为 `1/yes/on`，U-Boot 会跳过 PL 首屏链路。
 
 ### rootfs 分区
 
@@ -60,4 +44,4 @@ sudo dd if=rootfs.ext4 of=/dev/diskXs2 bs=1M status=progress
 
 ---
 
-**生成时间**: 2026-02-25 21:17:44
+**生成时间**: 2026-03-10 13:39:44

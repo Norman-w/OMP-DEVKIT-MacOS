@@ -42,8 +42,8 @@ fi
 export VM_IP="${VM_IP:-192.168.7.234}"
 export VM_USER="${VM_USER:-norman}"
 export VM_SD_PATH="${VM_SD_PATH:-/home/norman/petalinux-projects/OMP/sd_card}"
-# VM 上 git 走代理（proxychains4 → Windows 192.168.7.88:10080），否则从 macOS 触发时直连 GitHub 易超时
-export VM_GIT_PREFIX="${VM_GIT_PREFIX:-proxychains4 -q }"
+# VM 上 git：默认直连；若 VM 需代理访问 GitHub，执行前设 VM_GIT_PREFIX="proxychains4 -q "
+export VM_GIT_PREFIX="${VM_GIT_PREFIX:-}"
 export VM_PASSWORD="${VM_PASSWORD:-}" # 密码可选
 export VM_TARGET_BRANCH="${VM_TARGET_BRANCH:-}"
 export VM_TARGET_MODE="${VM_TARGET_MODE:-branch}"

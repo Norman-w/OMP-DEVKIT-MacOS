@@ -1,34 +1,24 @@
 #!/bin/bash
 # ============================================================================
-# [macOS] step5 烧录 SD 卡脚本
+# [macOS] 新卡从零制作：分区（BOOT + rootfs 区） + 写 BOOT + dd rootfs
 # ============================================================================
 #
-# 运行环境: macOS（本脚本在 macOS 上执行）
+# 运行环境: macOS
 #
 # 功能:
-#   1. 可选：从 VM 上的 PetaLinux 工程 sd_card 目录同步文件到本仓库 sd_card
-#   2. 检测外置 SD 卡，选择设备
-#   3. 用文件拷贝方式写入 BOOT 分区
-#   4. 用 dd 将 rootfs.ext4 写入 SD 卡 root 区域（从固定扇区起）
+#   1. 检测外置 SD 卡并选择设备
+#   2. 整盘重新分区：MBR，第一分区 512MB FAT32 名 BOOT，第二分区 Linux (83)
+#   3. 拷贝 BOOT_partition 内容到 BOOT 分区
+#   4. 用 dd 将 rootfs.ext4 写入第二分区区域
 #
-# 说明:
-#   - macOS 无法直接挂载 ext4，也无法在挂载后解压 rootfs.tar.gz 使用（路径/引用等问题）
-#   - 因此 root 分区采用预制的 rootfs.ext4 用 dd 写入
+# 使用:
+#   ./scripts/make_sd_card_from_scratch.sh
 #
-# 使用方法:
-#   ./scripts/step5_flash_sd_card.sh [VM上的sd_card路径]
-#
-# 示例:
-#   ./scripts/step5_flash_sd_card.sh
-#   ./scripts/step5_flash_sd_card.sh /path/on/vm/petalinux_project/sd_card
-#
-# 环境变量:
-#   PETA_SD_SOURCE  若设置，则从该路径同步到仓库 sd_card（可替代第一个参数）
+# 前提: 仓库 sd_card/BOOT_partition 与 sd_card/rootfs.ext4 已存在
 # ============================================================================
 
 set -e
 
-# 先保存调用时的当前目录（再 cd / 避免 getcwd 错误），用于解析脚本相对路径
 ORIGINAL_PWD="$(pwd)"
 cd / 2>/dev/null || true
 
@@ -40,7 +30,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 if [[ "$OSTYPE" != "darwin"* ]]; then
-    echo -e "${RED}错误: 此脚本仅在 macOS 上运行。当前系统: $OSTYPE${NC}"
+    echo -e "${RED}错误: 此脚本仅在 macOS 上运行。${NC}"
     exit 1
 fi
 
@@ -58,42 +48,16 @@ BOOT_SOURCE="${SD_CARD_DIR}/BOOT_partition"
 ROOTFS_IMG="${SD_CARD_DIR}/rootfs.ext4"
 cd "$ORIGINAL_PWD" 2>/dev/null || true
 
-# Root 分区在 SD 卡上的起始扇区（两分区时 diskutil 第二分区从 1048576 开始）
-ROOT_SEEK_SECTORS=1048576
-# 用 1MB 块写入可显著提速（seek 单位也为 1MB：512MB = 512）
 ROOT_SEEK_MB=512
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  [macOS] step5 烧录 SD 卡${NC}"
+echo -e "${GREEN}  [macOS] 新卡从零制作（BOOT + rootfs）${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
-# ----- 可选：从 VM 同步 sd_card 到仓库 -----
-PETA_SOURCE="${PETA_SD_SOURCE:-$1}"
-if [ -n "$PETA_SOURCE" ]; then
-    if [ ! -d "$PETA_SOURCE" ]; then
-        echo -e "${RED}错误: 源目录不存在: $PETA_SOURCE${NC}"
-        exit 1
-    fi
-    echo -e "${YELLOW}[macOS] 正在从 VM PetaLinux sd_card 同步到本仓库...${NC}"
-    echo -e "${BLUE}  源: $PETA_SOURCE${NC}"
-    echo -e "${BLUE}  目标: $SD_CARD_DIR${NC}"
-    mkdir -p "$SD_CARD_DIR"
-    rsync -a --delete "${PETA_SOURCE}/" "$SD_CARD_DIR/" || {
-        echo -e "${YELLOW}rsync 未安装或失败，尝试 cp...${NC}"
-        rm -rf "${SD_CARD_DIR:?}"/*
-        cp -R "${PETA_SOURCE}"/* "$SD_CARD_DIR/"
-    }
-    echo -e "${GREEN}  同步完成${NC}"
-    echo ""
-else
-    echo -e "${BLUE}[macOS] 未指定 PETA_SD_SOURCE 或参数，跳过从 VM 同步，使用本仓库 sd_card 现有内容${NC}"
-    echo ""
-fi
-
 if [ ! -d "$BOOT_SOURCE" ]; then
-    echo -e "${RED}错误: 未找到 BOOT 源目录: $BOOT_SOURCE${NC}"
+    echo -e "${RED}错误: 未找到 BOOT 源: $BOOT_SOURCE${NC}"
     exit 1
 fi
 if [ ! -f "$ROOTFS_IMG" ]; then
@@ -101,7 +65,7 @@ if [ ! -f "$ROOTFS_IMG" ]; then
     exit 1
 fi
 
-# ----- 复用 dd_img 中的 SD 卡检测逻辑 -----
+# ----- 与 step5 相同的 SD 卡检测 -----
 is_likely_sd_card() {
     local dev="$1"
     local info model size_line size_gb
@@ -124,8 +88,8 @@ is_likely_sd_card() {
 }
 
 detect_sd_cards_macos() {
-    echo -e "${YELLOW}[macOS] 正在检测 SD 卡设备（外置、容量≤32GB）...${NC}"
-    local devices device list_all
+    echo -e "${YELLOW}[macOS] 检测 SD 卡（外置、≤32GB）...${NC}"
+    local list_all devices device
     list_all=$(diskutil list external 2>/dev/null | grep -E "^/dev/disk[0-9]+" | awk '{print $1}' || true)
     [ -z "$list_all" ] && list_all=$(diskutil list | grep -E "^/dev/disk[0-9]+" | awk '{print $1}' | grep -v "^/dev/disk0$" || true)
     devices=""
@@ -134,7 +98,7 @@ detect_sd_cards_macos() {
     done
     devices=$(echo "$devices" | xargs)
     [ -z "$devices" ] && return 1
-    echo -e "${GREEN}检测到的 SD 卡设备:${NC}"
+    echo -e "${GREEN}检测到的 SD 卡:${NC}"
     for device in $devices; do
         size=$(diskutil info "$device" 2>/dev/null | grep "Disk Size" | awk -F: '{print $2}' | xargs || echo "未知")
         model=$(diskutil info "$device" 2>/dev/null | grep "Device / Media Name" | awk -F: '{print $2}' | xargs || echo "未知")
@@ -148,7 +112,7 @@ wait_for_sd_card_macos() {
         if detect_sd_cards_macos; then
             break
         fi
-        echo -e "${YELLOW}[macOS] 未检测到 SD 卡，请插入 SD 卡（持续检测中...）${NC}"
+        echo -e "${YELLOW}未检测到 SD 卡，请插入 SD 卡...${NC}"
         sleep 3
     done
 }
@@ -158,7 +122,6 @@ if ! detect_sd_cards_macos; then
 fi
 
 echo ""
-echo -e "${GREEN}可用的 SD 卡设备:${NC}"
 DEVICE_ARRAY=()
 dev_list=$(diskutil list external 2>/dev/null | grep -E "^/dev/disk[0-9]+" | awk '{print $1}' || true)
 [ -z "$dev_list" ] && dev_list=$(diskutil list | grep -E "^/dev/disk[0-9]+" | awk '{print $1}' | grep -v "^/dev/disk0$" || true)
@@ -176,25 +139,22 @@ for device in "${DEVICE_ARRAY[@]}"; do
 done
 
 if [ ${#DEVICE_ARRAY[@]} -eq 0 ]; then
-    echo -e "${RED}错误: 未找到可用的 SD 卡设备${NC}"
+    echo -e "${RED}错误: 未找到可用 SD 卡${NC}"
     exit 1
 fi
 
-
-# 自动选择SD卡并自动确认
 if [ ${#DEVICE_ARRAY[@]} -eq 1 ]; then
     SD_DEVICE="${DEVICE_ARRAY[0]}"
-    echo -e "${GREEN}自动检测到唯一SD卡: $SD_DEVICE，自动烧录...${NC}"
+    echo -e "${GREEN}自动选择唯一 SD 卡: $SD_DEVICE${NC}"
     AUTO_CONFIRM=1
 else
-    echo ""
-    echo -e "${YELLOW}请选择要使用的 SD 卡（输入编号或设备名，如 1 或 disk2）:${NC}"
+    echo -e "${YELLOW}请选择 SD 卡（输入编号或设备名）:${NC}"
     read -r USER_INPUT
     if [[ "$USER_INPUT" =~ ^[0-9]+$ ]]; then
         if [ "$USER_INPUT" -ge 1 ] && [ "$USER_INPUT" -le ${#DEVICE_ARRAY[@]} ]; then
             SD_DEVICE="${DEVICE_ARRAY[$((USER_INPUT-1))]}"
         else
-            echo -e "${RED}错误: 无效的编号${NC}"
+            echo -e "${RED}无效编号${NC}"
             exit 1
         fi
     else
@@ -205,7 +165,7 @@ else
 fi
 
 if ! diskutil info "$SD_DEVICE" &>/dev/null; then
-    echo -e "${RED}错误: 设备 $SD_DEVICE 不存在${NC}"
+    echo -e "${RED}错误: 设备不存在: $SD_DEVICE${NC}"
     exit 1
 fi
 if [ "$SD_DEVICE" = "/dev/disk0" ]; then
@@ -217,73 +177,92 @@ RDEVICE="/dev/rdisk${SD_DEVICE#/dev/disk}"
 BOOT_PART="${SD_DEVICE}s1"
 
 echo ""
-echo -e "${YELLOW}设备信息:${NC}"
+echo -e "${YELLOW}将操作的设备: $SD_DEVICE${NC}"
 diskutil list "$SD_DEVICE"
 echo ""
-if [ "$AUTO_CONFIRM" = "1" ]; then
-    echo -e "${GREEN}唯一SD卡且结构符合，自动确认，开始烧录...${NC}"
-else
-    echo -e "${RED}警告: 将向 $SD_DEVICE 写入 BOOT 分区文件并 dd 写入 rootfs.ext4，请确认设备、容量、名称确认为 SD 卡，避免误操作其他磁盘。${NC}"
+echo -e "${RED}⚠️  将对该盘重新分区并写入 BOOT + rootfs，请确认是 SD 卡且无重要数据。${NC}"
+if [ "$AUTO_CONFIRM" != "1" ]; then
     echo -e "${YELLOW}确认使用 $SD_DEVICE 继续？(yes/y/no):${NC}"
     read -r CONFIRM
     CONFIRM=$(echo "$CONFIRM" | tr '[:upper:]' '[:lower:]')
     if [ "$CONFIRM" != "yes" ] && [ "$CONFIRM" != "y" ]; then
-        echo "操作已取消"
+        echo "已取消"
         exit 0
     fi
 fi
 
-# 卸载整盘
+# ----- 1. 卸载 -----
 echo ""
-echo -e "${YELLOW}[macOS] 卸载设备...${NC}"
+echo -e "${YELLOW}[1/5] 卸载设备...${NC}"
 diskutil unmountDisk "$SD_DEVICE" 2>/dev/null || true
 sleep 2
 
-# 挂载 BOOT 分区并拷贝文件
+# ----- 2. 分区：MBR, BOOT 512M FAT32, 剩余 free -----
 echo ""
-echo -e "${YELLOW}[macOS] 挂载 BOOT 分区并拷贝文件...${NC}"
+echo -e "${YELLOW}[2/5] 创建分区表（MBR, BOOT 512M FAT32, 剩余空间保留）...${NC}"
+sudo diskutil partitionDisk "$SD_DEVICE" MBR FAT32 BOOT 512M free none R
+sleep 2
+diskutil unmountDisk "$SD_DEVICE" 2>/dev/null || true
+sleep 2
+
+# ----- 3. fdisk：将第二项设为 Linux (83)，起始扇区 1048576 -----
+echo ""
+echo -e "${YELLOW}[3/5] 使用 fdisk 将剩余空间设为 Linux 分区 (83)...${NC}"
+# macOS fdisk -e 接受 stdin
+printf 'edit 2\n83\nn\n1048576\n\nwrite\ny\nquit\n' | sudo fdisk -e "$SD_DEVICE" || {
+    echo -e "${YELLOW}fdisk 非交互失败，请手动执行以下命令后，再运行 step5 完成写 BOOT 和 rootfs:${NC}"
+    echo "  sudo fdisk -e $SD_DEVICE"
+    echo "  依次输入: edit 2, 83, n, 1048576, 回车, write, y, quit"
+    exit 1
+}
+sleep 2
+
+# ----- 4. 挂载 BOOT 并拷贝 -----
+echo ""
+echo -e "${YELLOW}[4/5] 挂载 BOOT 分区并拷贝文件...${NC}"
 diskutil mount "$BOOT_PART" || {
-    echo -e "${RED}错误: 无法挂载 BOOT 分区 $BOOT_PART，请确认 SD 卡已按文档先做好分区（512M BOOT FAT32）${NC}"
+    echo -e "${RED}无法挂载 $BOOT_PART${NC}"
     exit 1
 }
 sleep 1
 BOOT_MOUNT=$(diskutil info "$BOOT_PART" | grep "Mount Point" | awk -F: '{print $2}' | xargs)
 if [ -z "$BOOT_MOUNT" ] || [ ! -d "$BOOT_MOUNT" ]; then
-    echo -e "${RED}错误: 无法获取 BOOT 挂载点${NC}"
+    echo -e "${RED}无法获取 BOOT 挂载点${NC}"
     exit 1
 fi
 cp -R "${BOOT_SOURCE}"/* "$BOOT_MOUNT/" 2>/dev/null || true
 [ -f "${BOOT_SOURCE}/.env" ] && cp "${BOOT_SOURCE}/.env" "$BOOT_MOUNT/" && echo -e "${GREEN}  已拷贝 .env${NC}"
 [ -f "${BOOT_SOURCE}/.env.sample" ] && cp "${BOOT_SOURCE}/.env.sample" "$BOOT_MOUNT/"
+OMP_AC820="${OMP_AC820:-$(dirname "$REPO_ROOT")/OMP-AC820-PetaLinux}"
 if [ -f "${REPO_ROOT}/splash.rgb565" ]; then
     cp "${REPO_ROOT}/splash.rgb565" "$BOOT_MOUNT/" && echo -e "${GREEN}  已注入 splash.rgb565（来自仓库根）${NC}"
-elif [ -n "${OMP_AC820:-}" ] && [ -f "${OMP_AC820}/splash.rgb565" ]; then
+elif [ -f "${OMP_AC820}/splash.rgb565" ]; then
     cp "${OMP_AC820}/splash.rgb565" "$BOOT_MOUNT/" && echo -e "${GREEN}  已注入 splash.rgb565（来自 OMP-AC820-PetaLinux）${NC}"
 fi
 sync
 diskutil unmount "$BOOT_PART" || true
-echo -e "${GREEN}BOOT 分区文件拷贝完成${NC}"
-echo ""
+echo -e "${GREEN}BOOT 拷贝完成${NC}"
 
-# 使用 dd 写入 rootfs.ext4 到 root 区域（bs=1m 比 bs=512 快很多）
-echo -e "${YELLOW}[macOS] 使用 dd 写入 rootfs.ext4 到 root 区域（seek=${ROOT_SEEK_MB}MB）...${NC}"
+# ----- 5. dd rootfs -----
+echo ""
+echo -e "${YELLOW}[5/5] dd 写入 rootfs.ext4（seek=${ROOT_SEEK_MB}MB）...${NC}"
 sudo dd if="$ROOTFS_IMG" of="$RDEVICE" bs=1m seek="$ROOT_SEEK_MB" conv=sync status=progress || {
-    echo -e "${RED}错误: dd 写入失败${NC}"
+    echo -e "${RED}dd 失败${NC}"
     exit 1
 }
 sync
-echo -e "${GREEN}rootfs.ext4 写入完成${NC}"
-echo ""
+echo -e "${GREEN}rootfs 写入完成${NC}"
 
-# 卸载并弹出
-echo -e "${YELLOW}[macOS] 卸载并弹出 SD 卡...${NC}"
+# ----- 卸载并弹出 -----
+echo ""
+echo -e "${YELLOW}卸载并弹出 SD 卡...${NC}"
 diskutil unmountDisk "$SD_DEVICE" 2>/dev/null || true
 diskutil eject "$SD_DEVICE" 2>/dev/null || true
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  [macOS] step5 烧录完成${NC}"
+echo -e "${GREEN}  新卡制作完成（BOOT + rootfs）${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo -e "${BLUE}建议: 重新插拔 SD 卡，确认 BOOT 分区可识别即表示制作成功。${NC}"
+echo -e "${BLUE}可重新插拔 SD 卡，确认 BOOT 分区可见即表示成功。${NC}"
 echo ""

@@ -159,4 +159,7 @@ sudo diskutil unmountDisk /dev/disk5
 8. `sudo diskutil unmountDisk /dev/disk5`
 9. 重新插拔，确认 BOOT 分区可识别即表示制作完成。
 
-脚本自动化：可使用仓库中的 `scripts/step5_flash_sd_card.sh`（在 macOS 上执行），在已按上述步骤做好分区的前提下，自动拷贝 BOOT 文件并 dd 写入 rootfs.ext4。
+脚本自动化：
+
+- **新卡从零做一张完整卡（推荐）**：运行 `scripts/make_sd_card_from_scratch.sh`。会先分区（BOOT 512M + Linux 第二分区），再拷贝 BOOT、dd 写入 rootfs，无需事先分区。
+- **已有分区的卡**：若 SD 卡已按上文做好 BOOT + 第二分区，只需更新内容时，可使用 `scripts/step5_flash_sd_card.sh`，自动拷贝 BOOT 文件并 dd 写入 rootfs.ext4。

@@ -1,3 +1,4 @@
 .DS_Store
 *.ext4
 dev.env
+sd_card/BOOT_partition/.env
